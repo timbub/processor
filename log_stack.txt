@@ -1,0 +1,22 @@
+Error: stk->r_data_canary != R_CANARY 215
+Error: stk->size > stk->capacity
+pointer data = 00CF15C4
+size stack  = 1
+capacity stack  = 0
+hash = 177575
+data[-1] = -559026163 || pointer data[-1] = 00CF15C0
+data[0] = 2 || pointer data[0] = 00CF15C4
+18:48:08 Oct 11 2024
+
+
+Error: stk->r_data_canary != R_CANARY 215
+Error: stk->size > stk->capacity
+pointer data = 006715C4
+size stack  = 1
+capacity stack  = 0
+hash = 177575
+data[-1] = -559026163 || pointer data[-1] = 006715C0
+data[0] = 2 || pointer data[0] = 006715C4
+18:50:25 Oct 11 2024
+
+

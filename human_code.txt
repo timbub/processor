@@ -1,0 +1,9 @@
+push 300
+push 40
+add
+push 10
+add
+push 34343
+push 232323
+out
+hlt
