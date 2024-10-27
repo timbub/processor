@@ -22,7 +22,7 @@ enum functions
 
 enum reg
 {
-    AX,
+    AX = 0,
     BX,
     CX,
     DX,
@@ -93,12 +93,12 @@ int main(int argc, const char* argv[])
     labels.first_free_place = 0;
     labels.array_labels = NULL;
 
-    char** indicators = (char**) calloc(buffer_info.num_string, sizeof(char*));
-
     all_ctor(&buffer_info, &labels);
 
     input_buf(&buffer_info, input_file);
     buffer_info.num_string = proccess_buffer(&buffer_info);
+
+    char** indicators = (char**) calloc(buffer_info.num_string, sizeof(char*));
 
     input_indicator(&buffer_info, indicators);
 
@@ -106,10 +106,10 @@ int main(int argc, const char* argv[])
 
     assembly(indicators, buffer_info.num_string, array_code, options, &labels, registers, output_file);
 
-    for(int i = 0; i < buffer_info.num_string; i++)
-    {
-        printf("array_code[%d] %d\n ", i, array_code[i]);
-    }
+    //for(int i = 0; i < buffer_info.num_string; i++)
+    //{
+    //    printf("array_code[%d] %d\n ", i, array_code[i]);
+    //}
 
     all_dtor(&buffer_info, &labels, indicators, array_code);
     fclose(input_file);
@@ -166,7 +166,7 @@ void assembly(char** indicators, size_t size_array_indicators, int* code, struct
 
             if (up_code != -1)
             {
-                code[index++] = up_code;
+                code[index++] = up_code_r;
             }
         }
 
@@ -190,21 +190,24 @@ int check_labels(struct Labels* labels, char* name, int index)
 {
     int colon = ':';
     if (strchr(name, colon) != NULL)
+    {
+        for (int j = 0; j < labels->first_free_place; j++)
         {
-            for (int j = 0; j < labels->first_free_place; j++)
-            {
-                if (strcmp(name, labels->array_labels[j].name) == 0)
-                    {
-                        return labels->array_labels[j].address;
-                    }
-            }
-            if (labels->first_free_place < labels->size)
-            {
-                    strcpy(labels->array_labels[labels->first_free_place].name, name);
-                    labels->array_labels[labels->first_free_place++].address = index;
-                    return -1;
-            }
+            if (strcmp(name, labels->array_labels[j].name) == 0)
+                {
+                    printf("old label - %s\n", name);
+                    return labels->array_labels[j].address;
+                }
         }
+        if (labels->first_free_place <= labels->size)
+        {
+                printf("new label - %s\n", name);
+                strcpy(labels->array_labels[labels->first_free_place].name, name);
+                labels->array_labels[labels->first_free_place++].address = index;
+                return -1;
+        }
+    }
+    return -1;
 }
 
 
