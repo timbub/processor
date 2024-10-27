@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "onegin_func.h"
+#include <assert.h>
 
 enum functions
 {
-    HLT,
+    HLT = 0,
     OUT,
     IN,
     ADD,
@@ -12,141 +14,197 @@ enum functions
     MUL,
     DIV,
     INFO,
-    POP, 
+    POP,
     PUSH,
-    JMP   
+    JMP,
+    PUSH_R
 };
 
-enum registers_code
+enum reg
 {
-    AX = 0,
-    BX = 1,
-    CX = 2,
-    DX = 3,
-    EX = 4
+    AX,
+    BX,
+    CX,
+    DX,
+    EX
 };
 
-struct registers
+struct ident
 {
-    enum registers_code code;
-    char* name;
+    int code;
+    const char* name;
 };
 
-struct n_functions
-{
-    enum functions code;
-    char* name;
-};
-
-const size_t SIZE_LABELS = 10;
+const size_t SIZE_LABELS    = 10;
 const size_t NUMBER_OF_FUNC = 11;
 const size_t SIZE_REGISTERS = 10;
+const size_t SIZE_STRING    = 256;
+const int    ERROR_CODE     = -1;
 
-void assembly(FILE* input_file, FILE* output_file, int* buffer, struct n_functions* command, struct Labels* labels);
+void assembly(char** indicators, size_t size_array_indicators, int* code, struct ident* options, struct Labels* labels, struct ident* registers, FILE* output_file);
 size_t get_size(FILE* input_file);
+int get_value(struct ident* id, char* name);
+int check_labels(struct Labels* labels, char* name, int index);
+void all_ctor(struct buffer_inf* buffer_info, struct Labels* labels);
+void all_dtor(struct buffer_inf* buffer_info, struct Labels* labels, char** ind, int* code);
 
-struct Label 
+struct Label_type
 {
-    char name[256]; 
+    char name[SIZE_STRING];
     size_t address;
 };
 
-struct Labels 
+struct Labels
 {
-    struct Label* buffer_labels;
+    struct Label_type* array_labels;
     size_t size;
     size_t first_free_place;
 };
 
-int main(int argc, char* argv[])
+int main(int argc, const char* argv[])
 {
-    FILE* input_file = fopen(argv[1], "r"); 
-    FILE* output_file = fopen(argv[2], "w");
-    if (input_file == NULL) fprintf(stderr, "file %s is not open", argv[1]); 
-    if (output_file == NULL) fprintf(stderr, "file %s is not open", argv[2]); 
+    FILE* input_file  = fopen(argv[1], "rb");
+    FILE* output_file = fopen(argv[2], "wb"); //TODO read about rb and r in windows
 
-    size_t size_file = get_size(input_file);
+    if (input_file  == NULL)
+    {
+        fprintf(stderr, "file %s is not open", argv[1]);
+        return ERROR_CODE;
+    }
 
-    struct n_functions options[] = {{HLT, "hlt"}, {OUT, "out"}, {IN, "in"}, {ADD, "add"}, {SUB, "sub"},
-              {MUL, "mul"}, {DIV, "div"}, {INFO, "info"}, {POP, "pop"}, {PUSH, "push"}, {JMP, "jmp"}};
+    if (input_file  == NULL)
+    {
+        fprintf(stderr, "file %s is not open", argv[2]);
+        return ERROR_CODE;
+    }
 
-    int* buffer = (int*) calloc(size_file, sizeof(char));
+    struct ident options[]   = {{HLT, "hlt"}, {OUT, "out"}, {IN,     "in"}, {ADD, "add"}, {SUB,  "sub"},
+                                {MUL, "mul"}, {DIV, "div"}, {INFO, "info"}, {POP, "pop"}, {PUSH, "push"},
+                                {JMP, "jmp"}, {PUSH_R, "push_r"}, {EOF}};
+
+    struct ident registers[] = {{AX, "ax"},   {BX, "bx"},   {CX, "cx"},     {DX, "dx"},   {EX, "ex"}, {EOF}};
+
+    struct buffer_inf buffer_info = {};
+    buffer_info.size_buffer = get_size(input_file);
+    buffer_info.buffer = NULL;
 
     struct Labels labels = {};
     labels.size = SIZE_LABELS;
     labels.first_free_place = 0;
-    labels.buffer_labels = (struct Label*) calloc(labels.size, sizeof(struct Label));
+    labels.array_labels = NULL;
 
-    struct registers array_registers[] = {{AX, "ax"}, {BX, "bx"}, {CX, "cx"}, {DX, "dx"}, {EX, "ex"}};
-    
-    assembly(input_file, output_file, buffer, options, &labels);
+    char** indicators = (char**) calloc(buffer_info.num_string, sizeof(char*));
 
+    all_ctor(&buffer_info, &labels);
+
+    input_buf(&buffer_info, input_file);
+    buffer_info.num_string = proccess_buffer(&buffer_info);
+
+    input_indicator(&buffer_info, indicators);
+
+    int* array_code = (int*) calloc(buffer_info.num_string, sizeof(int));
+
+    assembly(indicators, buffer_info.num_string, array_code, options, &labels, registers, output_file);
+
+    for(int i = 0; i < buffer_info.num_string; i++)
+    {
+        printf("array_code[%d] %d\n ", i, array_code[i]);
+    }
+
+    all_dtor(&buffer_info, &labels, indicators, array_code);
     fclose(input_file);
     fclose(output_file);
-    free(labels.buffer_labels);
     return 0;
 }
 
-size_t get_size(FILE* input_file)
+int get_value(struct ident* id, char* name)
 {
-    fseek(input_file, 0L, SEEK_END); 
-    size_t size_file = ftell(input_file);
-    fseek(input_file, 0L, SEEK_SET); 
-    return size_file;
+    for(size_t j = 0; id[j].code != EOF ; j++)
+    {
+        if (strcmp(name, id[j].name) == 0)
+        {
+            return id[j].code;
+        }
+    }
+    return -1;
 }
 
-void assembly(FILE* input_file, FILE* output_file, int* buffer, struct n_functions* command, struct Labels* labels) 
+void all_ctor(struct buffer_inf* buffer_info, struct Labels* labels)
 {
-    char semicolon[] = ";";
-    char string[256];
-    int number_input = 0;
-    int size_code = 0;
-    while(fscanf(input_file, "%s", string) != EOF)
+    buffer_info->buffer = (char*) calloc(buffer_info->size_buffer, sizeof(char));
+    labels->array_labels = (struct Label_type*) calloc(labels->size, sizeof(struct Label_type));
+}
+
+void all_dtor(struct buffer_inf* buffer_info, struct Labels* labels, char** ind, int* code)
+{
+    free(buffer_info->buffer);
+    free(labels->array_labels);
+    free(ind);
+    free(code);
+}
+
+//TODO asm_struct
+void assembly(char** indicators, size_t size_array_indicators, int* code, struct ident* options, struct Labels* labels, struct ident* registers, FILE* output_file) //TODO assert
+{
+    int index = 0;
+
+    for(size_t i = 0; i < size_array_indicators; i++)
     {
-        for(int i = 0; i < NUMBER_OF_FUNC; i++)
+        int up_code = get_value(options, indicators[i]);
+
+        if (up_code != -1)
         {
-            
-            if (strcmp(command[i].name, string) == 0)
-            {
-                buffer[size_code] = command[i].code;
-                size_code++;
-                if (command[i].code == 9)
-                {
-                    fscanf(input_file, "%d", &number_input);
-                    buffer[size_code] = number_input;
-                    size_code++;
-                    
-                }
-                break;
-            }
-        }
-        if (strstr(string, semicolon) != NULL)
-        {
-            size_t check_label_flag = 0;
-            for (int i = 0; i < labels->first_free_place; i++)
-            {
-                if (strcmp(string,labels->buffer_labels[i].name) == 0)
-                    {
-                        buffer[size_code] = labels->buffer_labels[i].address;
-                        size_code++; 
-                        check_label_flag = 1; 
-                        break;  
-                    }
-            }
-            if (labels->first_free_place < labels->size && check_label_flag == 0)
-            {
-                    strcpy(labels->buffer_labels[labels->first_free_place].name, string);
-                    labels->buffer_labels[labels->first_free_place].address = size_code;
-                    labels->first_free_place++;
-            } 
+            code[index++] = up_code;
         }
 
+        if (up_code == PUSH)
+        {
+            code[index++] = atoi(indicators[++i]);
+        } else if (up_code == PUSH_R)
+        {
+            int up_code_r = get_value(registers, indicators[++i]);
+
+            if (up_code != -1)
+            {
+                code[index++] = up_code;
+            }
+        }
+
+        up_code = check_labels(labels, indicators[i], index);
+
+        if (up_code != -1)
+        {
+            code[index++] = up_code;
+        }
     }
-    fprintf(output_file, "%d ", size_code);
-    for (int i = 0; i < size_code; i++)
+
+    fprintf(output_file, "%d\n", index);
+    for(size_t i = 0; i < index; i++)
     {
-        fprintf(output_file, "%d ", buffer[i]);
+        fprintf(output_file, "%d ", code[i]);
     }
+   // fwrite(code, sizeof(int), index, output_file);
+}
+
+int check_labels(struct Labels* labels, char* name, int index)
+{
+    int colon = ':';
+    if (strchr(name, colon) != NULL)
+        {
+            for (int j = 0; j < labels->first_free_place; j++)
+            {
+                if (strcmp(name, labels->array_labels[j].name) == 0)
+                    {
+                        return labels->array_labels[j].address;
+                    }
+            }
+            if (labels->first_free_place < labels->size)
+            {
+                    strcpy(labels->array_labels[labels->first_free_place].name, name);
+                    labels->array_labels[labels->first_free_place++].address = index;
+                    return -1;
+            }
+        }
 }
 
 
